@@ -264,7 +264,7 @@ class EnhancedCodeGenerator:
                     reuse_result = smart_reuse.get_reusable_code(
                         prompt=prompt,
                         include_tests=include_tests,
-                        confidence_threshold=30.0
+                        confidence_threshold=2.0
                     )
 
                     if reuse_result:

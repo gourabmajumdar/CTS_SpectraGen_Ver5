@@ -1546,7 +1546,7 @@ def get_jira_tickets():
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error fetching tickets: {str(e)}'})
 
-
+'''
 @app.route('/select_jira_tickets', methods=['POST'])
 def select_jira_tickets():
     """Store selected JIRA tickets for code generation"""
@@ -1592,7 +1592,62 @@ def select_jira_tickets():
 
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error selecting tickets: {str(e)}'})
+'''
 
+@app.route('/select_jira_tickets', methods=['POST'])
+def select_jira_tickets():
+    """Store selected JIRA tickets for multi-ticket code generation - ENHANCED"""
+    global selected_jira_tickets, developer_workflows
+
+    try:
+        data = request.get_json()
+        selected_ticket_ids = data.get('ticket_ids', [])
+
+        if not selected_ticket_ids:
+            return jsonify({'success': False, 'message': 'No tickets selected'})
+
+        # Filter selected tickets from the fetched tickets
+        selected_jira_tickets = [
+            ticket for ticket in jira_tickets
+            if ticket['id'] in selected_ticket_ids
+        ]
+
+        # ENHANCED: Create individual prompts for each ticket (similar to QA test cases)
+        developer_workflows = []
+        for index, ticket in enumerate(selected_jira_tickets):
+            # Use your existing JIRA prompt building logic
+            individual_prompt = jira_integration.build_jira_prompt(ticket)
+
+            workflow_item = {
+                'id': f'ticket_{index}',
+                'ticket_id': ticket['id'],
+                'title': ticket['title'],
+                'description': ticket['full_description'],
+                'prompt': individual_prompt,  # Individual prompt for this ticket
+                'main_requirement': ticket['main_requirement'],
+                'acceptance_criteria': ticket['acceptance_criteria'],
+                'technical_notes': ticket['technical_notes'],
+                'priority': ticket['priority'],
+                'type': 'jira_ticket',
+                'source': 'jira_integration',
+                'index': index
+            }
+            developer_workflows.append(workflow_item)
+
+        # Store multi-ticket mode flag
+        session['multi_ticket_mode'] = len(selected_jira_tickets) > 1
+        session['current_ticket_workflows'] = developer_workflows
+
+        return jsonify({
+            'success': True,
+            'message': f'Selected {len(selected_jira_tickets)} tickets for development',
+            'selected_tickets': selected_jira_tickets,
+            'workflow_items': developer_workflows,
+            'multi_ticket_mode': len(selected_jira_tickets) > 1
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error selecting tickets: {str(e)}'})
 
 @app.route('/update_jira_status', methods=['POST'])
 def update_jira_status():
@@ -4260,6 +4315,7 @@ def execute_code():
             if os.path.isfile(script_info['file_path']):
                 print(f"[INFO] Executing script {i + 1}/{total_scripts}: {script_info['script_name']}")
                 result = execute_single_script(ssh, script_info)
+                print(f"[DEBUG] Returned Result Value: {result}")
                 execution_results.append(result)
 
                 # Update progress based on script execution
@@ -4291,6 +4347,9 @@ def execute_code():
         if selected_test_ids and len(scripts_to_execute) != len(generated_scripts_info):
             success_message += f' (selected {len(scripts_to_execute)} out of {len(generated_scripts_info)} total)'
 
+        overall_success = all(result['success'] for result in execution_results)
+        print(f"[DEBUG] Overall success: {overall_success}")
+        print(f"[DEBUG] Final Result: {execution_results}")
         return jsonify({
             'success': True,
             'connected_device': {
@@ -4523,6 +4582,15 @@ def execute_single_script(ssh, script_info):
         # Debug logging
         print(f"[DEBUG] STDOUT length: {len(execution_output)}")
         print(f"[DEBUG] STDERR length: {len(error_output)}")
+        print(f"[DEBUG] Script: {script_info['script_name']}")
+        print(f"[DEBUG] Exit status: {exit_status}")
+        print(f"[DEBUG] STDERR content: '{error_output}'")
+        print(f"[DEBUG] error_output length: {len(error_output)}")
+        print(f"[DEBUG] error_output repr: {repr(error_output)}")
+        print(f"[DEBUG] error_output.strip() length: {len(error_output.strip())}")
+        print(f"[DEBUG] error_output.strip() repr: {repr(error_output.strip())}")
+        print(f"[DEBUG] Success calculation: len(error_output.strip()) == 0 = {len(error_output.strip()) == 0}")
+        print(f"[DEBUG] Actual success value: {len(error_output.strip()) == 0}")
 
         return {
             'test_case_id': script_info['id'],

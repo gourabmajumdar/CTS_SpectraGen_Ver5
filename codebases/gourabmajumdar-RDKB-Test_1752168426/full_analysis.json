@@ -1,0 +1,296 @@
+{
+  "files": {
+    "run_test.py": {
+      "content": "import yaml\nimport subprocess\nimport os\nimport sys\nfrom datetime import datetime\n\nsys.path.append(os.path.join(os.path.dirname(__file__), 'lib'))\nsys.path.append(os.path.join(os.path.dirname(__file__), 'resources'))\n\ndef load_config(config_file):\n    with open(config_file, 'r') as file:\n        return yaml.safe_load(file)\n\ndef run_test(test_name, config):\n    try:\n        os.environ['MODEM_HOST'] = config['modem']['host']\n        os.environ['MODEM_USER'] = config['modem']['user']\n        os.environ['MODEM_PASSWORD'] = config['modem']['password']\n\n        # Construct the test file path without the 'tests' folder\n        test_file = os.path.join(os.path.dirname(__file__), *test_name.split('.')) + '.robot'\n        print(f\"Looking for test file: {test_file}\")  # Debug print\n        if os.path.exists(test_file):\n            # Create the report directory if it doesn't exist\n            report_dir = os.path.join(os.path.dirname(__file__), 'report')\n            os.makedirs(report_dir, exist_ok=True)\n\n            # Get the current time in EST\n            current_time = datetime.now().strftime('%Y%m%d_%H%M%S')\n\n            # Define the report, log, and output file names\n            report_file = os.path.join(report_dir, f'rdk_test_report_{current_time}.html')\n            log_file = os.path.join(report_dir, f'rdk_test_log_{current_time}.html')\n            output_file = os.path.join(report_dir, f'rdk_test_output_{current_time}.xml')\n\n            # Run the Robot Framework test with the specified output files\n            subprocess.run([\n                'robot',\n                f'--report={report_file}',\n                f'--log={log_file}',\n                f'--output={output_file}',\n                test_file\n            ], check=True)\n        else:\n            print(f\"Test file '{test_file}' not found.\")\n\n    except subprocess.CalledProcessError as e:\n        print(f\"Test '{test_name}' failed: {e}\")\n    except Exception as e:\n        print(f\"An error occurred: {e}\")\n\ndef main():\n    config = load_config(\"config/config.yaml\")\n    for test in config['tests']:\n        run_test(test, config)\n\nif __name__ == \"__main__\":\n    main()",
+      "size": 2149,
+      "lines": 58
+    },
+    "lib/utils.py": {
+      "content": "import paramiko\nimport time\n\nclass ModemUtils:\n    def __init__(self, host, username, password):\n        self.host = host\n        self.username = username\n        self.password = password\n        self.ssh = None\n\n    def connect(self):\n        try:\n            self.ssh = paramiko.SSHClient()\n            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())\n            self.ssh.connect(self.host, username=self.username, password=self.password)\n            print(f\"Connected to {self.host}\")\n        except Exception as e:\n            print(f\"SSH connection failed: {e}\")\n            raise\n\n    def disconnect(self):\n        if self.ssh:\n            self.ssh.close()\n            print(f\"Disconnected from {self.host}\")\n\n    def execute_command(self, command, timeout=10):\n        try:\n            stdin, stdout, stderr = self.ssh.exec_command(command, timeout=timeout)\n            exit_status = stdout.channel.recv_exit_status()\n            output = stdout.read().decode()\n            error = stderr.read().decode()\n\n            if error:\n                print(f\"Command '{command}' stderr: {error}\")\n            if exit_status != 0:\n                print(f\"Command '{command}' exited with status {exit_status}\")\n\n            return output, exit_status\n        except Exception as e:\n            print(f\"Command execution failed: {e}\")\n            raise\n\n    def wait_for_device(self, command, expected_output, timeout=60):\n        start_time = time.time()\n        while time.time() - start_time < timeout:\n            output, _ = self.execute_command(command)\n            if expected_output in output:\n                return True\n            time.sleep(5)\n        return False\n\n    def boot_time(self):\n        testresult = False\n        timelimit = 180\n        print(f\"Rebooting modem\")\n        starttime = time.time()\n        print(f\"Starting timer\")\n        print(f\"Attempting to reconnect to modem\")\n        # device needs to sleep for ~60 seconds in order for initial client conneciton to recognize as being closed\n        time.sleep(60)\n        client = self.connect()\n        print(f\"Successfully reconnected to modem\")\n        endtime = time.time()\n        elapsedtime = endtime - starttime\n        print(f\"Modem took {elapsedtime} seconds to reboot\")\n        if elapsedtime > timelimit:\n            print(f\"Modem took longer than 3 minutes to reboot\")\n            testresult = False\n            print(f\"Test Failed\")\n            return testresult\n\n        testresult = True\n        print(f\"Test Passed\")\n        return testresult\n\n# Run 2 different snmp commands, compare actual output of running the snmp commands with expected output.\n# Fails if both commands do not return expected output\n    def snmp_protocol(self):\n        testresult = False\n        expectedoutput1 = \"SNMPv2-SMI::enterprises.17270.50.2.1.1.1.0 = INTEGER: 5\"\n        expectedoutput2 = \"SNMPv2-SMI::enterprises.17270.50.2.2.2.1.1.3.10001 = \\\"RPI_RDKB-AP0\\\"\"\n        snmpcommand1 = \"snmpget -v2c -c public -t 5 192.168.1.208 1.3.6.1.4.1.17270.50.2.1.1.1.0\"\n        snmpcommand2 = \"snmpget -OQ -Ir -v 2c -c public 192.168.1.208 1.3.6.1.4.1.17270.50.2.2.2.1.1.3.10001\"\n\n        executecommand1 = self.execute_command(snmpcommand1)\n        executecommand2 = self.execute_command(snmpcommand2)\n        actualoutput1 = executecommand1[0].strip('\\n')\n        actualoutput2 = executecommand2[0].strip('\\n')\n        print(f\"Given the command, {snmpcommand1}\")\n        print(f\"The modem is returning: {actualoutput1}\")\n        print(f\"The expected result is: {expectedoutput1}\")\n        print(f\"Given the command, {snmpcommand2}\")\n        print(f\"The modem is returning: {actualoutput2}\")\n        print(f\"The expected result is: {expectedoutput2}\")\n        if (expectedoutput1 == actualoutput1 and expectedoutput2 == actualoutput2):\n            print(f\"Test Passed\")\n            testresult = True\n            return testresult\n\n        print(f\"Test Failed\")\n        return testresult\n\n# Runs after executing reboot command, waits 15 seconds to allow for the modem to reboot, \n# Tries to connect to modem, if the connection fails, modem is rebooting\n    def dmcli_reboot(self):\n        testresult = False\n        timelimit = 30\n        starttime = time.time()\n        try:\n            time.sleep(15)\n            self.connect()\n\n        except Exception as e:\n            print(\"Modem is currently rebooting\")\n            endtime = time.time()\n            elapsedtime = endtime - starttime\n            print(f\"Modem took {elapsedtime} seconds to reboot\")\n            if elapsedtime > timelimit:\n                print(f\"Modem took longer than 30 seconds to reboot\")\n                testresult = False\n                print(f\"Test Failed\")\n                return testresult\n            \n            if elapsedtime <= timelimit:\n                print(f\"Modem rebooted within its time limit of {timelimit} seconds\")\n                print(f\"Test Passed\")\n                testresult = True\n                return testresult\n            return testresult\n\n\n",
+      "size": 5031,
+      "lines": 132
+    },
+    "RDKB_Automation/tests/speedtest/dummy.py": {
+      "content": "",
+      "size": 0,
+      "lines": 1
+    }
+  },
+  "functions": {
+    "load_config": {
+      "file": "run_test.py",
+      "line": 10,
+      "code": "def load_config(config_file):\n    with open(config_file, 'r') as file:\n        return yaml.safe_load(file)",
+      "docstring": "No documentation",
+      "parameters": [
+        "config_file"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "safe_load",
+        "open",
+        "load_config"
+      ]
+    },
+    "run_test": {
+      "file": "run_test.py",
+      "line": 14,
+      "code": "def run_test(test_name, config):\n    try:\n        os.environ['MODEM_HOST'] = config['modem']['host']\n        os.environ['MODEM_USER'] = config['modem']['user']\n        os.environ['MODEM_PASSWORD'] = config['modem']['password']\n\n        # Construct the test file path without the 'tests' folder\n        test_file = os.path.join(os.path.dirname(__file__), *test_name.split('.')) + '.robot'\n        print(f\"Looking for test file: {test_file}\")  # Debug print\n        if os.path.exists(test_file):\n            # Create the report directory if it doesn't exist\n            report_dir = os.path.join(os.path.dirname(__file__), 'report')\n            os.makedirs(report_dir, exist_ok=True)\n\n            # Get the current time in EST\n            current_time = datetime.now().strftime('%Y%m%d_%H%M%S')\n\n            # Define the report, log, and output file names\n            report_file = os.path.join(report_dir, f'rdk_test_report_{current_time}.html')\n            log_file = os.path.join(report_dir, f'rdk_test_log_{current_time}.html')\n            output_file = os.path.join(report_dir, f'rdk_test_output_{current_time}.xml')\n\n            # Run the Robot Framework test with the specified output files\n            subprocess.run([\n                'robot',\n                f'--report={report_file}',\n                f'--log={log_file}',\n                f'--output={output_file}',\n                test_file\n            ], check=True)\n        else:\n            print(f\"Test file '{test_file}' not found.\")\n\n    except subprocess.CalledProcessError as e:\n        print(f\"Test '{test_name}' failed: {e}\")\n    except Exception as e:\n        print(f\"An error occurred: {e}\")",
+      "docstring": "No documentation",
+      "parameters": [
+        "test_name",
+        "config"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "strftime",
+        "run",
+        "exists",
+        "join",
+        "print",
+        "split",
+        "run_test",
+        "now",
+        "dirname",
+        "makedirs"
+      ]
+    },
+    "main": {
+      "file": "run_test.py",
+      "line": 52,
+      "code": "def main():\n    config = load_config(\"config/config.yaml\")\n    for test in config['tests']:\n        run_test(test, config)",
+      "docstring": "No documentation",
+      "parameters": [],
+      "returns": "Unknown",
+      "dependencies": [
+        "main",
+        "load_config",
+        "run_test"
+      ]
+    },
+    "__init__": {
+      "file": "lib/utils.py",
+      "line": 5,
+      "code": "    def __init__(self, host, username, password):\n        self.host = host\n        self.username = username\n        self.password = password\n        self.ssh = None",
+      "docstring": "No documentation",
+      "parameters": [
+        "self",
+        "host",
+        "username",
+        "password"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "__init__"
+      ]
+    },
+    "connect": {
+      "file": "lib/utils.py",
+      "line": 11,
+      "code": "    def connect(self):\n        try:\n            self.ssh = paramiko.SSHClient()\n            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())\n            self.ssh.connect(self.host, username=self.username, password=self.password)\n            print(f\"Connected to {self.host}\")\n        except Exception as e:\n            print(f\"SSH connection failed: {e}\")\n            raise",
+      "docstring": "No documentation",
+      "parameters": [
+        "self"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "connect",
+        "AutoAddPolicy",
+        "print",
+        "set_missing_host_key_policy",
+        "SSHClient"
+      ]
+    },
+    "disconnect": {
+      "file": "lib/utils.py",
+      "line": 21,
+      "code": "    def disconnect(self):\n        if self.ssh:\n            self.ssh.close()\n            print(f\"Disconnected from {self.host}\")",
+      "docstring": "No documentation",
+      "parameters": [
+        "self"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "close",
+        "print",
+        "disconnect"
+      ]
+    },
+    "execute_command": {
+      "file": "lib/utils.py",
+      "line": 26,
+      "code": "    def execute_command(self, command, timeout=10):\n        try:\n            stdin, stdout, stderr = self.ssh.exec_command(command, timeout=timeout)\n            exit_status = stdout.channel.recv_exit_status()\n            output = stdout.read().decode()\n            error = stderr.read().decode()\n\n            if error:\n                print(f\"Command '{command}' stderr: {error}\")\n            if exit_status != 0:\n                print(f\"Command '{command}' exited with status {exit_status}\")\n\n            return output, exit_status\n        except Exception as e:\n            print(f\"Command execution failed: {e}\")\n            raise",
+      "docstring": "No documentation",
+      "parameters": [
+        "self",
+        "command",
+        "timeout"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "print",
+        "read",
+        "exec_command",
+        "decode",
+        "execute_command",
+        "recv_exit_status"
+      ]
+    },
+    "wait_for_device": {
+      "file": "lib/utils.py",
+      "line": 43,
+      "code": "    def wait_for_device(self, command, expected_output, timeout=60):\n        start_time = time.time()\n        while time.time() - start_time < timeout:\n            output, _ = self.execute_command(command)\n            if expected_output in output:\n                return True\n            time.sleep(5)\n        return False",
+      "docstring": "No documentation",
+      "parameters": [
+        "self",
+        "command",
+        "expected_output",
+        "timeout"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "execute_command",
+        "wait_for_device",
+        "sleep",
+        "time"
+      ]
+    },
+    "boot_time": {
+      "file": "lib/utils.py",
+      "line": 52,
+      "code": "    def boot_time(self):\n        testresult = False\n        timelimit = 180\n        print(f\"Rebooting modem\")\n        starttime = time.time()\n        print(f\"Starting timer\")\n        print(f\"Attempting to reconnect to modem\")\n        # device needs to sleep for ~60 seconds in order for initial client conneciton to recognize as being closed\n        time.sleep(60)\n        client = self.connect()\n        print(f\"Successfully reconnected to modem\")\n        endtime = time.time()\n        elapsedtime = endtime - starttime\n        print(f\"Modem took {elapsedtime} seconds to reboot\")\n        if elapsedtime > timelimit:\n            print(f\"Modem took longer than 3 minutes to reboot\")\n            testresult = False\n            print(f\"Test Failed\")\n            return testresult\n\n        testresult = True\n        print(f\"Test Passed\")\n        return testresult",
+      "docstring": "No documentation",
+      "parameters": [
+        "self"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "connect",
+        "sleep",
+        "print",
+        "boot_time",
+        "time"
+      ]
+    },
+    "snmp_protocol": {
+      "file": "lib/utils.py",
+      "line": 78,
+      "code": "    def snmp_protocol(self):\n        testresult = False\n        expectedoutput1 = \"SNMPv2-SMI::enterprises.17270.50.2.1.1.1.0 = INTEGER: 5\"\n        expectedoutput2 = \"SNMPv2-SMI::enterprises.17270.50.2.2.2.1.1.3.10001 = \\\"RPI_RDKB-AP0\\\"\"\n        snmpcommand1 = \"snmpget -v2c -c public -t 5 192.168.1.208 1.3.6.1.4.1.17270.50.2.1.1.1.0\"\n        snmpcommand2 = \"snmpget -OQ -Ir -v 2c -c public 192.168.1.208 1.3.6.1.4.1.17270.50.2.2.2.1.1.3.10001\"\n\n        executecommand1 = self.execute_command(snmpcommand1)\n        executecommand2 = self.execute_command(snmpcommand2)\n        actualoutput1 = executecommand1[0].strip('\\n')\n        actualoutput2 = executecommand2[0].strip('\\n')\n        print(f\"Given the command, {snmpcommand1}\")\n        print(f\"The modem is returning: {actualoutput1}\")\n        print(f\"The expected result is: {expectedoutput1}\")\n        print(f\"Given the command, {snmpcommand2}\")\n        print(f\"The modem is returning: {actualoutput2}\")\n        print(f\"The expected result is: {expectedoutput2}\")\n        if (expectedoutput1 == actualoutput1 and expectedoutput2 == actualoutput2):\n            print(f\"Test Passed\")\n            testresult = True\n            return testresult\n\n        print(f\"Test Failed\")\n        return testresult",
+      "docstring": "No documentation",
+      "parameters": [
+        "self"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "print",
+        "if",
+        "strip",
+        "snmp_protocol",
+        "execute_command"
+      ]
+    },
+    "dmcli_reboot": {
+      "file": "lib/utils.py",
+      "line": 105,
+      "code": "    def dmcli_reboot(self):\n        testresult = False\n        timelimit = 30\n        starttime = time.time()\n        try:\n            time.sleep(15)\n            self.connect()\n\n        except Exception as e:\n            print(\"Modem is currently rebooting\")\n            endtime = time.time()\n            elapsedtime = endtime - starttime\n            print(f\"Modem took {elapsedtime} seconds to reboot\")\n            if elapsedtime > timelimit:\n                print(f\"Modem took longer than 30 seconds to reboot\")\n                testresult = False\n                print(f\"Test Failed\")\n                return testresult\n            \n            if elapsedtime <= timelimit:\n                print(f\"Modem rebooted within its time limit of {timelimit} seconds\")\n                print(f\"Test Passed\")\n                testresult = True\n                return testresult\n            return testresult",
+      "docstring": "No documentation",
+      "parameters": [
+        "self"
+      ],
+      "returns": "Unknown",
+      "dependencies": [
+        "connect",
+        "sleep",
+        "print",
+        "dmcli_reboot",
+        "time"
+      ]
+    }
+  },
+  "classes": {
+    "ModemUtils": {
+      "file": "lib/utils.py",
+      "line": 4,
+      "code": "class ModemUtils:\n    def __init__(self, host, username, password):\n        self.host = host\n        self.username = username\n        self.password = password\n        self.ssh = None\n\n    def connect(self):\n        try:\n            self.ssh = paramiko.SSHClient()\n            self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())\n            self.ssh.connect(self.host, username=self.username, password=self.password)\n            print(f\"Connected to {self.host}\")\n        except Exception as e:\n            print(f\"SSH connection failed: {e}\")\n            raise\n\n    def disconnect(self):\n        if self.ssh:\n            self.ssh.close()\n            print(f\"Disconnected from {self.host}\")\n\n    def execute_command(self, command, timeout=10):\n        try:\n            stdin, stdout, stderr = self.ssh.exec_command(command, timeout=timeout)\n            exit_status = stdout.channel.recv_exit_status()\n            output = stdout.read().decode()\n            error = stderr.read().decode()\n\n            if error:\n                print(f\"Command '{command}' stderr: {error}\")\n            if exit_status != 0:\n                print(f\"Command '{command}' exited with status {exit_status}\")\n\n            return output, exit_status\n        except Exception as e:\n            print(f\"Command execution failed: {e}\")\n            raise\n\n    def wait_for_device(self, command, expected_output, timeout=60):\n        start_time = time.time()\n        while time.time() - start_time < timeout:\n            output, _ = self.execute_command(command)\n            if expected_output in output:\n                return True\n            time.sleep(5)\n        return False\n\n    def boot_time(self):\n        testresult = False\n        timelimit = 180\n        print(f\"Rebooting modem\")\n        starttime = time.time()\n        print(f\"Starting timer\")\n        print(f\"Attempting to reconnect to modem\")\n        # device needs to sleep for ~60 seconds in order for initial client conneciton to recognize as being closed\n        time.sleep(60)\n        client = self.connect()\n        print(f\"Successfully reconnected to modem\")\n        endtime = time.time()\n        elapsedtime = endtime - starttime\n        print(f\"Modem took {elapsedtime} seconds to reboot\")\n        if elapsedtime > timelimit:\n            print(f\"Modem took longer than 3 minutes to reboot\")\n            testresult = False\n            print(f\"Test Failed\")\n            return testresult\n\n        testresult = True\n        print(f\"Test Passed\")\n        return testresult\n",
+      "docstring": "No documentation",
+      "methods": {
+        "__init__": {
+          "line": 5,
+          "parameters": [
+            "self",
+            "host",
+            "username",
+            "password"
+          ],
+          "docstring": "No documentation"
+        },
+        "connect": {
+          "line": 11,
+          "parameters": [
+            "self"
+          ],
+          "docstring": "No documentation"
+        },
+        "disconnect": {
+          "line": 21,
+          "parameters": [
+            "self"
+          ],
+          "docstring": "No documentation"
+        },
+        "execute_command": {
+          "line": 26,
+          "parameters": [
+            "self",
+            "command",
+            "timeout"
+          ],
+          "docstring": "No documentation"
+        },
+        "wait_for_device": {
+          "line": 43,
+          "parameters": [
+            "self",
+            "command",
+            "expected_output",
+            "timeout"
+          ],
+          "docstring": "No documentation"
+        },
+        "boot_time": {
+          "line": 52,
+          "parameters": [
+            "self"
+          ],
+          "docstring": "No documentation"
+        },
+        "snmp_protocol": {
+          "line": 78,
+          "parameters": [
+            "self"
+          ],
+          "docstring": "No documentation"
+        },
+        "dmcli_reboot": {
+          "line": 105,
+          "parameters": [
+            "self"
+          ],
+          "docstring": "No documentation"
+        }
+      },
+      "base_classes": []
+    }
+  },
+  "imports": [
+    "datetime",
+    "subprocess",
+    "os",
+    "time",
+    "paramiko",
+    "yaml",
+    "sys"
+  ],
+  "patterns": {},
+  "full_context": ""
+}

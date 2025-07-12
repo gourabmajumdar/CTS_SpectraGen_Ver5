@@ -6445,3 +6445,151 @@ textarea:focus-visible {
 .tickets-container::-webkit-scrollbar-thumb:hover {
     background: #94a3b8;
 }
+
+.ticket-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid #e5e7eb;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.control-group label {
+    font-weight: 600;
+    color: #374151;
+    min-width: 120px;
+}
+
+.main-code-btn {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: white;
+}
+
+.test-code-btn {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+}
+
+.action-btn {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: white;
+}
+/* Multi-ticket tab switching CSS */
+.ticket-tab-container {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.ticket-tab-headers {
+    display: flex;
+    background: #f3f4f6;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.ticket-tab-header {
+    flex: 1;
+    padding: 12px 20px;
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    border-bottom: 3px solid transparent;
+}
+
+.ticket-tab-header:hover {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.ticket-tab-header.active {
+    background: white;
+    color: #1f2937;
+    border-bottom: 3px solid #3b82f6;
+}
+
+.ticket-tab-contents {
+    position: relative;
+}
+
+.ticket-tab-content {
+    display: none; /* ← This is the key - hide inactive tabs */
+}
+
+.ticket-tab-content.active {
+    display: block; /* ← Show only the active tab */
+}
+
+.ticket-textarea {
+    width: 100%;
+    min-height: 300px;
+    border: none;
+    padding: 15px;
+    font-family: 'Monaco', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+    background: #ffffff;
+    border-top: 1px solid #e5e7eb;
+}
+
+.tab-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 15px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.toolbar-left h4 {
+    margin: 0;
+    color: #374151;
+    font-size: 14px;
+}
+
+.toolbar-right {
+    display: flex;
+    gap: 8px;
+}
+
+.toolbar-btn {
+    padding: 6px 12px;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #374151; /* ← ADD THIS LINE */
+}
+
+.toolbar-btn:hover {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+    color: #1f2937; /* ← ADD THIS LINE */
+}
+
+.tab-footer {
+    padding: 8px 15px;
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+    text-align: right;
+}
+
+.char-count {
+    font-size: 12px;
+    color: #6b7280;
+}

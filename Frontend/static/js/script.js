@@ -70,6 +70,11 @@ let jiraConnection = null;
 let jiraTickets = [];
 let selectedJiraTickets = new Set();
 
+// Global variables for multi-ticket support
+let multiTicketMode = false;
+let currentTicketIndex = 0;
+let ticketResults = [];
+
 function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -1210,6 +1215,7 @@ function updateJiraTicketSelectionUI() {
     });
 }
 
+/*
 // Proceed with selected JIRA tickets
 async function proceedWithSelectedTickets() {
     if (selectedJiraTickets.size === 0) {
@@ -1277,6 +1283,664 @@ async function proceedWithSelectedTickets() {
         proceedBtn.disabled = false;
         proceedBtn.textContent = `Proceed with Selected Tickets (${selectedJiraTickets.size})`;
     }
+}
+*/
+
+// Enhanced proceed with selected tickets - REUSES EXISTING LOGIC
+async function proceedWithSelectedTickets() {
+    if (selectedJiraTickets.size === 0) {
+        showToast('Please select at least one JIRA ticket', 'warning');
+        return;
+    }
+
+    const proceedBtn = document.getElementById('proceedWithTicketsBtn');
+    proceedBtn.disabled = true;
+    proceedBtn.textContent = 'Processing...';
+
+    try {
+        // Use your existing ticket selection logic
+        const selectResponse = await fetch('/select_jira_tickets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ticket_ids: Array.from(selectedJiraTickets)
+            })
+        });
+
+        const selectResult = await selectResponse.json();
+
+        if (selectResult.success) {
+            multiTicketMode = selectResult.multi_ticket_mode;
+
+            if (multiTicketMode) {
+                // Store data for multi-ticket mode
+                ticketResults = selectResult.workflow_items;
+
+                // Hide JIRA integration and show developer workflow (your existing logic)
+                document.getElementById('jiraIntegrationSection').style.display = 'none';
+                document.getElementById('fileUploadSection').style.display = 'block';
+                showDeveloperGenerationOptions();
+            } else {
+                // Use your EXISTING single-ticket logic (copy from your working code)
+                const promptResponse = await fetch('/generate_jira_prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                const promptResult = await promptResponse.json();
+
+                if (promptResult.success) {
+                    displayJiraPromptInWorkflow(promptResult);
+                    document.getElementById('jiraIntegrationSection').style.display = 'none';
+                    document.getElementById('fileUploadSection').style.display = 'block';
+                    showDeveloperGenerationOptions();
+                    showToast(`${promptResult.message} - Ready for code generation!`, 'success');
+                } else {
+                    showToast(promptResult.message, 'error');
+                }
+            }
+
+            // Hide JIRA integration and show developer workflow
+            document.getElementById('jiraIntegrationSection').style.display = 'none';
+            document.getElementById('fileUploadSection').style.display = 'block';
+
+            showToast(`${selectResult.message} - Ready for code generation!`, 'success');
+        } else {
+            showToast(selectResult.message, 'error');
+        }
+
+    } catch (error) {
+        console.error('Error processing tickets:', error);
+        showToast('Failed to process tickets: ' + error.message, 'error');
+    } finally {
+        proceedBtn.disabled = false;
+        proceedBtn.textContent = `Proceed with Selected Tickets (${selectedJiraTickets.size})`;
+    }
+}
+
+// Initialize multi-ticket workflow - FOLLOWS QA PATTERN
+function initializeMultiTicketWorkflow(selectResult) {
+    console.log('🎫 Initializing multi-ticket workflow');
+
+    // Store workflow data
+    ticketResults = selectResult.workflow_items;
+
+    // Create multi-ticket UI similar to QA test cases
+    createMultiTicketUI(selectResult.workflow_items);
+}
+
+// REUSE your existing generateApplicationCode function for each ticket
+async function generateSelectedTicketCode() {
+    const selectedTickets = getSelectedTickets();
+
+    if (selectedTickets.length === 0) {
+        showToast('Please select at least one ticket for code generation', 'warning');
+        return;
+    }
+
+    showProgress('Generating code for selected tickets...', 0);
+
+    try {
+        for (let i = 0; i < selectedTickets.length; i++) {
+            const ticketId = selectedTickets[i];
+            const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+
+            if (ticketIndex === -1) continue;
+
+            const ticket = ticketResults[ticketIndex];
+
+            // Update status
+            updateTicketStatus(ticketIndex, 'Generating...', '#3b82f6');
+
+            // Store this ticket's prompt in session (reuse existing logic)
+            await storeTicketPromptForGeneration(ticket);
+
+            // Use your EXISTING generateApplicationCode function!
+            const success = await generateSingleTicketCode(ticketIndex);
+
+            if (success) {
+                updateTicketStatus(ticketIndex, 'Generated ✓', '#22c55e');
+            } else {
+                updateTicketStatus(ticketIndex, 'Failed ✗', '#ef4444');
+            }
+
+            // Update progress
+            const progress = ((i + 1) / selectedTickets.length) * 100;
+            updateProgress(progress, `Generated ${i + 1}/${selectedTickets.length} tickets`);
+        }
+
+        showToast(`Generated code for ${selectedTickets.length} tickets!`, 'success');
+
+    } catch (error) {
+        console.error('Multi-ticket generation error:', error);
+        showToast('Code generation failed: ' + error.message, 'error');
+    } finally {
+        hideProgress();
+    }
+}
+
+// Generate code for a single ticket using EXISTING logic
+async function generateSingleTicketCode(ticketIndex) {
+    try {
+        // Store the current ticket's prompt (reuse existing session logic)
+        const ticket = ticketResults[ticketIndex];
+
+        // Use your existing backend endpoint with individual prompt
+        const response = await fetch('/process_developer_prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: ticket.prompt,
+                workflowType: 'jira',
+                rawInputs: {
+                    files: [],
+                    requirements: ticket.description,
+                    technicalNotes: ticket.technical_notes || ''
+                }
+            })
+        });
+
+        const promptResult = await response.json();
+
+        if (promptResult.success) {
+            // Now use your EXISTING /generate_app_code route with smart reuse!
+            const generateResponse = await fetch('/generate_app_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    generate_from_prompt: true,
+                    ticket_context: {
+                        ticket_id: ticket.ticket_id,
+                        ticket_index: ticketIndex
+                    }
+                })
+            });
+
+            const generateResult = await generateResponse.json();
+
+            if (generateResult.success) {
+                // Display in ticket-specific areas
+                displayTicketCode(ticketIndex, generateResult.generated_code);
+                return true;
+            }
+        }
+
+        return false;
+
+    } catch (error) {
+        console.error(`Error generating code for ticket ${ticketIndex}:`, error);
+        return false;
+    }
+}
+
+// Display generated code in ticket-specific UI areas
+function displayTicketCode(ticketIndex, generatedCode) {
+    // Parse the code (reuse your existing parseGeneratedCodeFiles logic)
+    const parsedFiles = parseGeneratedCodeFiles(generatedCode);
+
+    // Update main code area
+    const mainFile = parsedFiles.find(f => f.type === 'main');
+    if (mainFile) {
+        const mainTextarea = document.getElementById(`mainArea${ticketIndex}`);
+        if (mainTextarea) {
+            mainTextarea.value = mainFile.content;
+            updateTicketCharCount(ticketIndex, 'main');
+        }
+    }
+
+    // Update unit test area if tests were generated
+    const testFile = parsedFiles.find(f => f.type === 'test');
+    if (testFile) {
+        const testTextarea = document.getElementById(`testArea${ticketIndex}`);
+        if (testTextarea) {
+            testTextarea.value = testFile.content;
+            updateTicketCharCount(ticketIndex, 'test');
+            // ADD THIS LINE: Store original unit test code
+            const ticket = ticketResults[ticketIndex];
+            if (ticket) {
+                storeOriginalUnitTestCode(ticket.ticket_id, testFile.content);
+            }
+        }
+    }
+}
+
+// REUSE existing review logic for multi-ticket
+async function reviewSelectedTicketCode() {
+    const selectedTickets = getSelectedTickets();
+
+    if (selectedTickets.length === 0) {
+        showToast('Please select at least one ticket for review', 'warning');
+        return;
+    }
+
+    showProgress('Reviewing selected tickets...', [
+        'Preparing code for review',
+        'Analyzing selected tickets',
+        'Generating review reports'
+    ]);
+
+    try {
+        for (let i = 0; i < selectedTickets.length; i++) {
+            const ticketId = selectedTickets[i];
+            const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+
+            if (ticketIndex === -1) continue;
+
+            // Get the generated code for this ticket
+            const mainTextarea = document.getElementById(`mainArea${ticketIndex}`);
+            const testTextarea = document.getElementById(`testArea${ticketIndex}`);
+
+            if (!mainTextarea || !mainTextarea.value.trim()) continue;
+
+            // Store the code temporarily for review (reuse existing logic)
+            await fetch('/store_generated_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    generated_code: [{
+                        file_name: `${ticketId}_implementation.py`,
+                        generated_code: mainTextarea.value,
+                        story_id: ticketId,
+                        story_title: ticketResults[ticketIndex].title
+                    }]
+                })
+            });
+
+            // Use your EXISTING review endpoint!
+            const reviewResponse = await fetch('/review_app_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ticket_context: {
+                        ticket_id: ticketId,
+                        ticket_index: ticketIndex
+                    }
+                })
+            });
+
+            const reviewResult = await reviewResponse.json();
+
+            if (reviewResult.success) {
+                // Display review results in the main code area
+                mainTextarea.value = reviewResult.review_report || mainTextarea.value;
+                updateTicketCharCount(ticketIndex, 'main');
+                updateTicketStatus(ticketIndex, 'Reviewed ✓', '#10b981');
+            }
+
+            // Update progress
+            const progress = ((i + 1) / selectedTickets.length) * 100;
+            updateProgress(progress, `Reviewed ${i + 1}/${selectedTickets.length} tickets`);
+        }
+
+        showToast(`Reviewed ${selectedTickets.length} tickets!`, 'success');
+
+    } catch (error) {
+        console.error('Multi-ticket review error:', error);
+        showToast('Review failed: ' + error.message, 'error');
+    } finally {
+        hideProgress();
+    }
+}
+
+// UI Creation - SAME AS BEFORE
+function createMultiTicketUI(workflowItems) {
+    const container = document.getElementById('generatedCodeContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="multi-ticket-container">
+            <div class="multi-ticket-header">
+                <h3>🎫 Multi-Ticket Development Workflow</h3>
+                <p>Selected ${workflowItems.length} JIRA tickets for code generation</p>
+            </div>
+            
+            <!-- Ticket Selection Controls -->
+            <div class="ticket-controls">
+                <button class="control-btn" onclick="selectAllTickets()">Select All</button>
+                <button class="control-btn" onclick="deselectAllTickets()">Deselect All</button>
+                <button class="control-btn" onclick="generateSelectedTicketCode()">Generate Code</button>
+                <button class="control-btn" onclick="reviewSelectedTicketCode()">Review Code</button>
+                <button class="control-btn" onclick="runSelectedTicketCode()">Run Code</button>
+            </div>
+
+            <!-- Individual Ticket Areas -->
+            <div id="multiTicketAreas" class="multi-ticket-areas">
+                ${workflowItems.map((item, index) => createTicketArea(item, index)).join('')}
+            </div>
+        </div>
+    `;
+
+    container.style.display = 'block';
+}
+
+// Individual ticket area creation - SAME AS BEFORE
+function createTicketArea(workflowItem, index) {
+    return `
+        <div class="ticket-area-group" data-ticket-id="${workflowItem.ticket_id}">
+            <div class="ticket-area-header">
+                <div class="header-left">
+                    <label class="ticket-checkbox">
+                        <input type="checkbox" 
+                               value="${workflowItem.ticket_id}" 
+                               checked 
+                               onchange="toggleTicketSelection('${workflowItem.ticket_id}')">
+                        <span class="ticket-info">
+                            <strong>${workflowItem.ticket_id}</strong> - ${workflowItem.title}
+                        </span>
+                    </label>
+                </div>
+                <div class="header-right">
+                    <span class="generation-status" id="status_${index}">Ready</span>
+                </div>
+            </div>
+
+            <!-- Ticket Tabs -->
+            <div class="ticket-tab-container">
+                <div class="ticket-tab-headers">
+                    <button class="ticket-tab-header active" 
+                            data-tab="main_${index}" 
+                            onclick="switchTicketTab('main_${index}', ${index})">
+                        🚀 Main Code
+                    </button>
+                    <button class="ticket-tab-header" 
+                            data-tab="test_${index}" 
+                            onclick="switchTicketTab('test_${index}', ${index})">
+                        🧪 Unit Tests
+                    </button>
+                </div>
+
+                <div class="ticket-tab-contents">
+                    <!-- Main Code Content -->
+                    <div class="ticket-tab-content active" data-tab="main_${index}">
+                        <div class="tab-toolbar">
+                            <div class="toolbar-left">
+                                <h4>🚀 Main Implementation - ${workflowItem.ticket_id}</h4>
+                            </div>
+                            <div class="toolbar-right">
+                                <button class="toolbar-btn" onclick="saveTicketTabContent('main_${index}')">💾 Save</button>
+                                <button class="toolbar-btn" onclick="downloadTicketTabContent('main_${index}')">📥 Download</button>
+                                <button class="toolbar-btn" onclick="runTicketCode(${index})">▶️ Run</button>
+                            </div>
+                        </div>
+                        <textarea 
+                            id="mainArea${index}" 
+                            class="ticket-textarea"
+                            placeholder="Main application code for ${workflowItem.ticket_id} will appear here..."
+                            oninput="updateTicketCharCount(${index}, 'main')"
+                        ></textarea>
+                        <div class="tab-footer">
+                            <span class="char-count" id="mainCharCount${index}">0 characters</span>
+                        </div>
+                    </div>
+
+                    <!-- Unit Tests Content -->
+                    <div class="ticket-tab-content" data-tab="test_${index}">
+                        <div class="tab-toolbar">
+                            <div class="toolbar-left">
+                                <h4>🧪 Unit Tests - ${workflowItem.ticket_id}</h4>
+                            </div>
+                            <div class="toolbar-right">
+                                <button class="toolbar-btn" onclick="saveTicketTabContent('test_${index}')">💾 Save</button>
+                                <button class="toolbar-btn" onclick="downloadTicketTabContent('test_${index}')">📥 Download</button>
+                                <button class="toolbar-btn" onclick="runTicketTests(${index})">🧪 Run Tests</button>
+                            </div>
+                        </div>
+                        <textarea 
+                            id="testArea${index}" 
+                            class="ticket-textarea"
+                            placeholder="Unit tests for ${workflowItem.ticket_id} will appear here..."
+                            oninput="updateTicketCharCount(${index}, 'test')"
+                        ></textarea>
+                        <div class="tab-footer">
+                            <span class="char-count" id="testCharCount${index}">0 characters</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Save content for multi-ticket tabs
+async function saveTicketTabContent(tabId) {
+    console.log(`💾 Saving content for tab: ${tabId}`);
+
+    // Parse the tabId to get the correct textarea
+    let textareaId, contentType, ticketId;
+
+    if (tabId.startsWith('main_')) {
+        const index = tabId.replace('main_', '');
+        textareaId = `mainArea${index}`;
+        contentType = 'main';
+        ticketId = ticketResults[index]?.ticket_id || `ticket_${index}`;
+    } else if (tabId.startsWith('test_')) {
+        const index = tabId.replace('test_', '');
+        textareaId = `testArea${index}`;
+        contentType = 'test';
+        ticketId = ticketResults[index]?.ticket_id || `ticket_${index}`;
+    } else {
+        // Fallback for other tab types
+        textareaId = `${tabId}TabTextarea`;
+        contentType = tabId;
+        ticketId = tabId;
+    }
+
+    const textarea = document.getElementById(textareaId);
+    if (!textarea) {
+        console.error(`❌ Textarea not found: ${textareaId}`);
+        showToast('Save failed - textarea not found', 'error');
+        return;
+    }
+
+    const content = textarea.value.trim();
+    if (!content) {
+        showToast(`No content to save for ${ticketId}!`, 'warning');
+        return;
+    }
+
+    try {
+        // Save to localStorage as backup
+        const storageKey = `ticket_${ticketId}_${contentType}`;
+        localStorage.setItem(storageKey, content);
+        localStorage.setItem(`${storageKey}_timestamp`, new Date().toISOString());
+
+        showToast(`${ticketId} ${contentType} code saved successfully!`, 'success');
+        console.log(`✅ Saved ${ticketId} ${contentType} code to localStorage`);
+
+    } catch (error) {
+        console.error(`❌ Error saving ${ticketId} ${contentType}:`, error);
+        showToast(`Failed to save ${ticketId} ${contentType} code`, 'error');
+    }
+}
+
+// Download content for multi-ticket tabs
+function downloadTicketTabContent(tabId) {
+    console.log(`📥 Downloading content for tab: ${tabId}`);
+
+    // Parse the tabId to get the correct textarea
+    let textareaId, contentType, ticketId;
+
+    if (tabId.startsWith('main_')) {
+        const index = tabId.replace('main_', '');
+        textareaId = `mainArea${index}`;
+        contentType = 'main';
+        ticketId = ticketResults[index]?.ticket_id || `ticket_${index}`;
+    } else if (tabId.startsWith('test_')) {
+        const index = tabId.replace('test_', '');
+        textareaId = `testArea${index}`;
+        contentType = 'test';
+        ticketId = ticketResults[index]?.ticket_id || `ticket_${index}`;
+    } else {
+        // Fallback for other tab types
+        textareaId = `${tabId}TabTextarea`;
+        contentType = tabId;
+        ticketId = tabId;
+    }
+
+    const textarea = document.getElementById(textareaId);
+    if (!textarea) {
+        console.error(`❌ Textarea not found: ${textareaId}`);
+        showToast('Download failed - textarea not found', 'error');
+        return;
+    }
+
+    const content = textarea.value.trim();
+    if (!content) {
+        showToast(`No content to download for ${ticketId}!`, 'warning');
+        return;
+    }
+
+    // Create filename
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `${ticketId}_${contentType}_${timestamp}.py`;
+
+    // Create and trigger download
+    const element = document.createElement('a');
+    const file = new Blob([content], { type: 'text/x-python' });
+    element.href = URL.createObjectURL(file);
+    element.download = filename;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+
+    showToast(`${filename} downloaded successfully!`, 'success');
+    console.log(`✅ Downloaded ${filename}`);
+}
+
+// New function to run specific ticket's unit tests
+async function runTicketTests(ticketIndex) {
+    console.log(`🧪 Running tests for ticket ${ticketIndex}`);
+
+    // Get the specific ticket's test code
+    const testTextarea = document.getElementById(`testArea${ticketIndex}`);
+    if (!testTextarea || !testTextarea.value.trim()) {
+        showToast(`No unit tests found for ticket ${ticketIndex}. Please generate tests first!`, 'warning');
+        return;
+    }
+
+    // Create a temporary textarea with the ID format that runTests() expects
+    const tempTextarea = document.createElement('textarea');
+    tempTextarea.id = `ticket_${ticketIndex}_testTextarea`;
+    tempTextarea.value = testTextarea.value;
+    tempTextarea.style.display = 'none';
+    document.body.appendChild(tempTextarea);
+
+    try {
+        // Now call runTests with the expected fileId format
+        await runTests(`ticket_${ticketIndex}_test`);
+
+        // IMPORTANT: Copy the results back to the original textarea
+        const updatedContent = tempTextarea.value;
+        testTextarea.value = updatedContent;
+
+        // Update character count if you have that function
+        updateTicketCharCount(ticketIndex, 'test');
+
+    } finally {
+        // Clean up the temporary textarea
+        document.body.removeChild(tempTextarea);
+    }
+}
+
+// New function to run specific ticket code
+async function runTicketCode(ticketIndex) {
+    console.log(`▶️ Running code for ticket ${ticketIndex}`);
+
+    // Get the specific ticket's main code
+    const mainTextarea = document.getElementById(`mainArea${ticketIndex}`);
+    if (!mainTextarea || !mainTextarea.value.trim()) {
+        showToast(`No code found for ticket ${ticketIndex}. Please generate code first!`, 'warning');
+        return;
+    }
+
+    // Store the specific ticket's code temporarily in the global variable
+    // so your existing execution flow works
+    window.generatedApplicationCode = [{
+        generated_code: mainTextarea.value.trim(),
+        file_name: `ticket_${ticketIndex}_code.py`
+    }];
+
+    // Now call your existing runCode() function
+    await runCode();
+}
+
+// Utility functions - SAME AS BEFORE
+function getSelectedTickets() {
+    const checkboxes = document.querySelectorAll('.ticket-checkbox input:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+function selectAllTickets() {
+    document.querySelectorAll('.ticket-checkbox input').forEach(cb => cb.checked = true);
+}
+
+function deselectAllTickets() {
+    document.querySelectorAll('.ticket-checkbox input').forEach(cb => cb.checked = false);
+}
+
+function updateTicketCharCount(index, type) {
+    const textarea = document.getElementById(`${type}Area${index}`);
+    const charCount = document.getElementById(`${type}CharCount${index}`);
+
+    if (textarea && charCount) {
+        charCount.textContent = `${textarea.value.length} characters`;
+    }
+}
+
+function updateTicketStatus(index, status, color) {
+    const statusElement = document.getElementById(`status_${index}`);
+    if (statusElement) {
+        statusElement.textContent = status;
+        statusElement.style.background = color;
+    }
+}
+
+function switchTicketTab(tabId, ticketIndex) {
+    console.log(`🔄 Switching ticket tab: ${tabId}, ticketIndex: ${ticketIndex}`);
+
+    // Find ALL ticket area groups and use the index directly
+    const allTicketGroups = document.querySelectorAll('.ticket-area-group');
+    console.log(`Found ${allTicketGroups.length} ticket groups`);
+
+    if (ticketIndex >= allTicketGroups.length) {
+        console.error(`❌ Invalid ticket index: ${ticketIndex}, only ${allTicketGroups.length} groups found`);
+        return;
+    }
+
+    const ticketGroup = allTicketGroups[ticketIndex];
+    console.log(`✅ Using ticket group at index ${ticketIndex}`);
+
+    // Debug: Check what tabs exist in this group
+    const existingHeaders = ticketGroup.querySelectorAll('.ticket-tab-header');
+    const existingContents = ticketGroup.querySelectorAll('.ticket-tab-content');
+
+    console.log('Available tab headers:', Array.from(existingHeaders).map(h => h.getAttribute('data-tab')));
+    console.log('Available tab contents:', Array.from(existingContents).map(c => c.getAttribute('data-tab')));
+
+    // Remove active class from all headers in this group
+    existingHeaders.forEach(header => header.classList.remove('active'));
+
+    // Find and activate the target header
+    const targetHeader = ticketGroup.querySelector(`[data-tab="${tabId}"]`);
+    if (!targetHeader) {
+        console.error(`❌ Tab header not found for: ${tabId}`);
+        return;
+    }
+    targetHeader.classList.add('active');
+
+    // Remove active class from all contents in this group
+    existingContents.forEach(content => content.classList.remove('active'));
+
+    // Find and activate the target content
+    const targetContent = ticketGroup.querySelector(`.ticket-tab-content[data-tab="${tabId}"]`);
+    if (!targetContent) {
+        console.error(`❌ Tab content not found for: ${tabId}`);
+        return;
+    }
+    targetContent.classList.add('active');
+
+    console.log(`✅ Successfully switched to ${tabId}`);
 }
 
 // Display JIRA-generated prompt in the developer workflow
@@ -3026,6 +3690,90 @@ function updateCharts() {
 async function ingestDeveloperRequirementsOriginal() {
     console.log('📥 Starting developer requirements ingestion...');
 
+    // Check if we're in multi-ticket mode
+    if (multiTicketMode && ticketResults && ticketResults.length > 0) {
+        // Multi-ticket mode - create UI and skip normal ingestion
+        console.log('🎫 Multi-ticket mode detected, creating multi-ticket UI');
+
+        const ingestBtn = document.getElementById('ingestDevBtn');
+        if (ingestBtn) {
+            ingestBtn.disabled = true;
+            ingestBtn.textContent = 'Processing Multi-Ticket Requirements...';
+        }
+
+        try {
+            showProgress('Processing Multi-Ticket Requirements', [
+                'Generating combined AI prompt',
+                'Processing ticket requirements',
+                'Saving prompt data'
+            ]);
+
+            updateProgress(25, 'Generating combined AI prompt', 0);
+
+            // Generate combined prompt from all tickets
+            const promptResponse = await fetch('/generate_jira_prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const promptResult = await promptResponse.json();
+
+            if (!promptResult.success) {
+                throw new Error(promptResult.message);
+            }
+
+            updateProgress(75, 'Displaying combined prompt', 1);
+
+            // ✅ DISPLAY the combined prompt in the requirement text area
+            displayJiraPromptInWorkflow(promptResult);
+
+            updateProgress(100, 'Multi-ticket requirements processed', 2);
+
+            // ✅ ENABLE the generate button
+            const generateBtn = document.getElementById('generateAppBtn');
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.style.opacity = '1';
+                generateBtn.style.cursor = 'pointer';
+            }
+
+            showToast(`Multi-ticket prompt generated for ${ticketResults.length} tickets. Ready for code generation!`, 'success');
+
+        } catch (error) {
+            console.error('❌ Multi-ticket processing error:', error);
+            showToast('Multi-ticket processing failed: ' + error.message, 'error');
+        } finally {
+            if (ingestBtn) {
+                ingestBtn.disabled = false;
+                ingestBtn.textContent = 'Ingest Requirements';
+            }
+            hideProgress();
+        }
+        return;
+    }
+
+    // Check if single JIRA ticket mode
+    const jiraSection = document.getElementById('jiraIntegrationSection');
+    if (jiraSection && jiraSection.style.display !== 'none') {
+        // JIRA integration is active, check if tickets are processed
+        if (selectedJiraTickets.size === 0) {
+            showToast('Please select JIRA tickets first', 'warning');
+            return;
+        }
+
+        // Check if prompt is already generated from JIRA tickets
+        const requirementText = document.getElementById('requirementText');
+        if (requirementText && requirementText.value.includes('JIRA Ticket Implementation Request')) {
+            showToast('JIRA tickets already processed. Ready for code generation.', 'success');
+            return;
+        }
+
+        // Single ticket JIRA mode - use existing logic
+        showToast('JIRA tickets already processed. Ready for code generation.', 'success');
+        return;
+    }
+
+    // Original file-based ingestion logic for non-JIRA workflows
     const devFileInput = document.getElementById('developerFileInput');
     const requirementTextElement = document.getElementById('requirementText');
 
@@ -3840,8 +4588,480 @@ async function generateApplicationCode() {
 }
 */
 
+// Create individual ticket areas (only when generation starts)
+function createIndividualTicketAreas(workflowItems) {
+    const container = document.getElementById('generatedCodeContainer');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="multi-ticket-container">
+            <div class="multi-ticket-header">
+                <h3>🎫 Multi-Ticket Code Generation</h3>
+                <p>Generating code for ${workflowItems.length} JIRA tickets</p>
+            </div>
+            
+            <!-- Enhanced Ticket Selection Controls -->
+            <div class="ticket-controls">
+                <div class="control-group">
+                    <label>Code Type Selection:</label>
+                    <button class="control-btn main-code-btn" onclick="selectAllMainCode()">Select All Main Code</button>
+                    <button class="control-btn test-code-btn" onclick="selectAllTestCode()">Select All Unit Tests</button>
+                </div>
+                
+                <div class="control-group">
+                    <label>Actions:</label>
+                    <!-- Remove this line: <button class="control-btn action-btn" onclick="reviewSelectedTicketCode()">Review Selected</button> -->
+                    <button class="control-btn action-btn" onclick="runSelectedTicketCode()">Run Selected</button>
+                </div>
+            </div>
+
+            <div id="multiTicketAreas" class="multi-ticket-areas">
+                ${workflowItems.map((item, index) => createTicketArea(item, index)).join('')}
+            </div>
+        </div>
+    `;
+    container.style.display = 'block';
+}
+
+// Select all main code tabs
+function selectAllMainCode() {
+    document.querySelectorAll('.ticket-checkbox input').forEach(cb => {
+        cb.checked = true;
+        // Switch each ticket to main code tab
+        const ticketId = cb.value;
+        const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+        if (ticketIndex !== -1) {
+            switchTicketTab(`main_${ticketIndex}`, ticketIndex);
+        }
+    });
+    showToast('Selected all main code tabs', 'info');
+}
+
+// Select all unit test tabs
+function selectAllTestCode() {
+    document.querySelectorAll('.ticket-checkbox input').forEach(cb => {
+        cb.checked = true;
+        // Switch each ticket to test code tab
+        const ticketId = cb.value;
+        const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+        if (ticketIndex !== -1) {
+            switchTicketTab(`test_${ticketIndex}`, ticketIndex);
+        }
+    });
+    showToast('Selected all unit test tabs', 'info');
+}
+/*
+// Missing function: Run Selected - intelligently detects active tab type
+async function runSelectedTicketCode() {
+    console.log('🚀 Running selected code based on active tab type');
+
+    // Check what type of tabs are currently active across all tickets
+    let activeMainCount = 0;
+    let activeTestCount = 0;
+
+    for (let i = 0; i < ticketResults.length; i++) {
+        const mainTab = document.querySelector(`.ticket-tab-content[data-tab="main_${i}"].active`);
+        const testTab = document.querySelector(`.ticket-tab-content[data-tab="test_${i}"].active`);
+
+        if (mainTab) activeMainCount++;
+        if (testTab) activeTestCount++;
+    }
+
+    console.log(`Active tabs: ${activeMainCount} main, ${activeTestCount} test`);
+
+    if (activeMainCount > 0 && activeTestCount === 0) {
+        // All main code tabs are active - run main code logic
+        console.log('🚀 Detected main code context - running main code');
+        await runAllActiveMainCode();
+    } else if (activeTestCount > 0 && activeMainCount === 0) {
+        // All test tabs are active - run unit test logic
+        console.log('🧪 Detected unit test context - running unit tests');
+        await runAllActiveUnitTests();
+    } else {
+        // Mixed or no active tabs
+        showToast('Please select either all main code or all unit tests before running', 'warning');
+    }
+}
+
+// Run all currently active main code
+async function runAllActiveMainCode() {
+    console.log('🚀 Running all active main code');
+
+    // Find the first active main code area and use your existing runCode logic
+    for (let i = 0; i < ticketResults.length; i++) {
+        const mainTab = document.querySelector(`.ticket-tab-content[data-tab="main_${i}"].active`);
+        if (mainTab) {
+            // Use your existing runTicketCode function for the first active main code
+            await runTicketCode(i);
+            showToast(`Executed main code for ticket ${ticketResults[i].ticket_id}`, 'success');
+            break; // Run one at a time for now
+        }
+    }
+}
+
+// Run all currently active unit tests
+    async function runAllActiveUnitTests() {
+    console.log('🧪 Running all active unit tests');
+
+    // Find the first active unit test area and use your existing runTests logic
+    for (let i = 0; i < ticketResults.length; i++) {
+        const testTab = document.querySelector(`.ticket-tab-content[data-tab="test_${i}"].active`);
+        if (testTab) {
+            // Use your existing runTicketTests function for the first active test
+            await runTicketTests(i);
+            showToast(`Executed unit tests for ticket ${ticketResults[i].ticket_id}`, 'success');
+            // Small delay between executions
+            await delay(1000);
+        }
+    }
+}
+*/
+
+// Updated: Run Selected - only runs checked tickets
+async function runSelectedTicketCode() {
+    console.log('🚀 Running selected (checked) tickets based on active tab type');
+
+    // Get only the checked tickets
+    const selectedTicketIds = getSelectedTickets();
+
+    if (selectedTicketIds.length === 0) {
+        showToast('Please select at least one ticket by checking the checkbox', 'warning');
+        return;
+    }
+
+    // Check what type of tabs are currently active for the selected tickets
+    let activeMainCount = 0;
+    let activeTestCount = 0;
+    const selectedIndices = [];
+
+    selectedTicketIds.forEach(ticketId => {
+        const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+        if (ticketIndex !== -1) {
+            selectedIndices.push(ticketIndex);
+
+            const mainTab = document.querySelector(`.ticket-tab-content[data-tab="main_${ticketIndex}"].active`);
+            const testTab = document.querySelector(`.ticket-tab-content[data-tab="test_${ticketIndex}"].active`);
+
+            if (mainTab) activeMainCount++;
+            if (testTab) activeTestCount++;
+        }
+    });
+
+    console.log(`Selected tickets: ${selectedTicketIds.length}, Active tabs: ${activeMainCount} main, ${activeTestCount} test`);
+
+    if (activeMainCount > 0 && activeTestCount === 0) {
+        // All selected tickets show main code - run main code logic
+        console.log('🚀 Running main code for selected tickets');
+        await runSelectedMainCode(selectedIndices);
+    } else if (activeTestCount > 0 && activeMainCount === 0) {
+        // All selected tickets show tests - run unit test logic
+        console.log('🧪 Running unit tests for selected tickets');
+        await runSelectedUnitTests(selectedIndices);
+    } else {
+        // Mixed tabs or no selection
+        showToast('Please ensure all selected tickets show the same tab type (all main code or all unit tests)', 'warning');
+    }
+}
+
+// Fix runSelectedMainCode function
+/*
+async function runSelectedMainCode(selectedIndices) {
+    showProgress('Running main code for selected tickets...', [
+        'Preparing execution',
+        'Running selected main code',
+        'Collecting results'
+    ]); // ← Fixed: Pass array instead of string
+
+    try {
+        for (let j = 0; j < selectedIndices.length; j++) {
+            const ticketIndex = selectedIndices[j];
+            console.log(`Running main code for ticket index ${ticketIndex}`);
+
+            //const progress = ((j + 1) / selectedIndices.length) * 100;
+            //updateProgress(progress, `Running main code ${j + 1}/${selectedIndices.length}`);
+
+            await runTicketCode(ticketIndex);
+            await delay(500);
+        }
+
+        showToast(`Executed main code for ${selectedIndices.length} selected tickets!`, 'success');
+
+    } catch (error) {
+        console.error('Selected main code execution error:', error);
+        showToast('Main code execution failed: ' + error.message, 'error');
+    }
+}
+*/
+
+async function runSelectedMainCode(selectedIndices) {
+    console.log('🚀 Starting multi-ticket main code execution');
+
+    // Check if code has been reviewed (optional but recommended)
+    const reviewBtn = document.getElementById('reviewAppBtn');
+    const isReviewed = reviewBtn && reviewBtn.textContent.includes('Review Completed');
+
+    if (!isReviewed) {
+        const confirmExecute = confirm('Please Complete Code Review before executing');
+        if (!confirmExecute || confirmExecute) {
+            return;
+        }
+    }
+
+    // Store selected tickets for later execution
+    window.multiTicketSelectedIndices = selectedIndices;
+
+    // Load available devices first
+    await loadAvailableDevices();
+
+    if (availableDevices.length === 0) {
+        showToast('No devices available for execution. Please check device configuration.', 'error');
+        return;
+    }
+
+    // Use your existing device selection modal
+    createDeviceSelectionModal();
+}
+
+// Fix runSelectedUnitTests function
+async function runSelectedUnitTests(selectedIndices) {
+    // RESTORE original unit test code before running
+    selectedIndices.forEach(ticketIndex => {
+        const ticket = ticketResults[ticketIndex];
+        const testTextarea = document.getElementById(`testArea${ticketIndex}`);
+
+        if (testTextarea) {
+            // Check if textarea contains review results (indicators of review content)
+            const currentContent = testTextarea.value;
+            if (currentContent.includes('=== CODE REVIEW REPORT ===') ||
+                currentContent.includes('UNIT TEST CODE REVIEW') ||
+                currentContent.includes('STATIC ANALYSIS')) {
+
+                console.log(`🔄 Detected review content in ${ticket.ticket_id}, restoring original unit test code`);
+
+                // Option A: Check if we have stored original code
+                if (window.originalUnitTestCode && window.originalUnitTestCode[ticket.ticket_id]) {
+                    testTextarea.value = window.originalUnitTestCode[ticket.ticket_id];
+                    console.log(`✅ Restored original unit test code for ${ticket.ticket_id}`);
+                }
+                // Option B: If no stored code, try to extract from review content
+                else {
+                    // Look for original code section in review report
+                    const originalCodeMatch = currentContent.match(/=== ORIGINAL CODE ===([\s\S]*?)(?:===|$)/);
+                    if (originalCodeMatch && originalCodeMatch[1]) {
+                        const originalCode = originalCodeMatch[1].trim();
+                        testTextarea.value = originalCode;
+                        console.log(`✅ Extracted original unit test code for ${ticket.ticket_id} from review`);
+                    } else {
+                        console.warn(`⚠️ Could not restore unit test code for ${ticket.ticket_id} - no original code found`);
+                        showToast(`Warning: Could not restore unit test code for ${ticket.ticket_id}`, 'warning');
+                    }
+                }
+
+                // Update character count after restoration
+                updateTicketCharCount(ticketIndex, 'test');
+            }
+        }
+    });
+
+    showProgress('Running unit tests for selected tickets...', [
+        'Preparing test execution',
+        'Running selected unit tests',
+        'Collecting test results'
+    ]); // ← Fixed: Pass array instead of string
+
+    try {
+        for (let j = 0; j < selectedIndices.length; j++) {
+            const ticketIndex = selectedIndices[j];
+            console.log(`Running unit tests for ticket index ${ticketIndex}`);
+
+            //const progress = ((j + 1) / selectedIndices.length) * 100;
+            //updateProgress(progress, `Running tests ${j + 1}/${selectedIndices.length}`);
+
+            await runTicketTests(ticketIndex);
+            await delay(1000);
+        }
+
+        showToast(`Executed unit tests for ${selectedIndices.length} selected tickets!`, 'success');
+
+    } catch (error) {
+        console.error('Selected unit tests execution error:', error);
+        showToast('Unit tests execution failed: ' + error.message, 'error');
+    }
+}
+
+// Add a function to store original code when generating unit tests
+function storeOriginalUnitTestCode(ticketId, code) {
+    if (!window.originalUnitTestCode) {
+        window.originalUnitTestCode = {};
+    }
+    window.originalUnitTestCode[ticketId] = code;
+    console.log(`💾 Stored original unit test code for ${ticketId}`);
+}
+
+// Enhanced toggleTicketSelection with better logic
+function toggleTicketSelection(ticketId) {
+    console.log(`🎯 Toggling selection for ticket: ${ticketId}`);
+
+    // Find the specific checkbox in the ticket area (not in the JIRA selection area)
+    const checkbox = document.querySelector(`.ticket-area-group .ticket-checkbox input[value="${ticketId}"]`);
+    const ticketItem = document.querySelector(`.ticket-area-group[data-ticket-id="${ticketId}"]`);
+
+    if (checkbox && ticketItem) {
+        // Update visual selection state
+        if (checkbox.checked) {
+            ticketItem.classList.add('selected');
+            console.log(`✅ Selected ticket: ${ticketId}`);
+        } else {
+            ticketItem.classList.remove('selected');
+            console.log(`❌ Deselected ticket: ${ticketId}`);
+        }
+
+        // Update the selection count display
+        updateSelectionCount();
+    } else {
+        console.error(`❌ Checkbox or ticket item not found for: ${ticketId}`);
+        console.log('Available checkboxes:', document.querySelectorAll('.ticket-checkbox input'));
+        console.log('Available ticket items:', document.querySelectorAll('[data-ticket-id]'));
+    }
+}
+
+/*
+// Update selection count display
+function updateSelectionCount() {
+    const checkedBoxes = document.querySelectorAll('.ticket-checkbox input:checked');
+    const totalBoxes = document.querySelectorAll('.ticket-checkbox input');
+
+    console.log(`Selected: ${checkedBoxes.length}/${totalBoxes.length} tickets`);
+
+    // You can add a visual indicator here if needed
+    // For example, update a counter in the UI
+}
+*/
+
+function updateSelectionCount() {
+    // Only count checkboxes in the multi-ticket area, not the JIRA selection area
+    const checkedBoxes = document.querySelectorAll('.ticket-area-group .ticket-checkbox input:checked');
+    const totalBoxes = document.querySelectorAll('.ticket-area-group .ticket-checkbox input');
+
+    console.log(`Selection count: ${checkedBoxes.length}/${totalBoxes.length} tickets`);
+
+    // Log each checked item for debugging
+    checkedBoxes.forEach((cb, index) => {
+        console.log(`Checked ${index}: ${cb.value}`);
+    });
+}
+
+// Enhanced getSelectedTickets with debugging
+function getSelectedTickets() {
+    // Find all checked checkboxes specifically in ticket areas
+    const checkboxes = document.querySelectorAll('.ticket-area-group .ticket-checkbox input:checked');
+
+    console.log(`Found ${checkboxes.length} checked checkboxes`);
+
+    const selectedIds = [];
+    checkboxes.forEach((cb, index) => {
+        console.log(`Checkbox ${index}: value="${cb.value}", checked=${cb.checked}`);
+        selectedIds.push(cb.value);
+    });
+
+    // Remove duplicates
+    const uniqueSelectedIds = [...new Set(selectedIds)];
+    console.log('Raw selected IDs:', selectedIds);
+    console.log('Unique selected IDs:', uniqueSelectedIds);
+
+    return uniqueSelectedIds;
+}
+
+// Generate code for all tickets sequentially
+async function generateAllTicketsCode() {
+    showProgress('Generating code for all tickets...', [
+        'Preparing ticket data',
+        'Processing individual tickets',
+        'Generating code with smart reuse',
+        'Finalizing results'
+    ]);
+
+    try {
+        for (let i = 0; i < ticketResults.length; i++) {
+            const ticket = ticketResults[i];
+
+            updateTicketStatus(i, 'Generating...', '#3b82f6');
+
+            const cleanPrompt = ticket.main_requirement || ticket.description || ticket.title;
+            // Store individual ticket prompt and generate code
+            await fetch('/process_developer_prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: cleanPrompt,
+                    workflowType: 'jira',
+                    rawInputs: {
+                        files: [],
+                        requirements: cleanPrompt,
+                        technicalNotes: ticket.technical_notes || ''
+                    }
+                })
+            });
+
+            // Use your existing generation endpoint with smart reuse
+            const generateResponse = await fetch('/generate_app_code', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ generate_from_prompt: true })
+            });
+
+            const generateResult = await generateResponse.json();
+
+            if (generateResult.success) {
+                displayTicketCode(i, generateResult.generated_code);
+                updateTicketStatus(i, 'Generated ✓', '#22c55e');
+            } else {
+                updateTicketStatus(i, 'Failed ✗', '#ef4444');
+            }
+
+            const progress = ((i + 1) / ticketResults.length) * 100;
+            updateProgress(progress, `Generated ${i + 1}/${ticketResults.length} tickets`);
+        }
+        // Enable review button after successful generation
+        const reviewBtn = document.getElementById('reviewAppBtn');
+        if (reviewBtn) {
+            reviewBtn.disabled = false;
+            reviewBtn.style.opacity = '1';
+            reviewBtn.style.cursor = 'pointer';
+        }
+
+        // ADD THIS: Disable generate button after generation
+        const generateBtn = document.getElementById('generateAppBtn');
+        if (generateBtn) {
+            generateBtn.disabled = true;
+            generateBtn.textContent = 'Code Generated ✓';
+            generateBtn.style.opacity = '0.6';
+            generateBtn.style.cursor = 'not-allowed';
+        }
+        showToast(`Generated code for ${ticketResults.length} tickets!`, 'success');
+
+    } catch (error) {
+        console.error('Multi-ticket generation error:', error);
+        showToast('Code generation failed: ' + error.message, 'error');
+    } finally {
+        hideProgress();
+    }
+}
+
 //NEW FIXED ONE - LETS TRY
 async function generateApplicationCode() {
+    // ✅ Handle multi-ticket mode
+    if (multiTicketMode && ticketResults && ticketResults.length > 0) {
+        console.log('🎫 Starting multi-ticket code generation');
+
+        // Create individual ticket areas NOW (not during ingestion)
+        createIndividualTicketAreas(ticketResults);
+
+        // Start sequential generation for each ticket
+        await generateAllTicketsCode();
+        return;
+    }
+
     console.log('🔧 Starting application code generation...');
 
     // EXISTING: Skip user story selection check for simplified workflow
@@ -4300,10 +5520,72 @@ async function checkForReusableCode(prompt, includeTests = true) {
 async function reviewApplicationCode() {
     console.log('🔍 Starting application code review using run_commands.py flow...');
 
+    // MINIMAL FIX: Ensure backend has the code before review
+    if (generatedApplicationCode && generatedApplicationCode.length > 0) {
+        await fetch('/store_generated_code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ generated_code: generatedApplicationCode })
+        });
+    }
+
     // Debug logging
     console.log('🔍 DEBUG: generatedApplicationCode:', generatedApplicationCode);
     console.log('🔍 DEBUG: Array.isArray(generatedApplicationCode):', Array.isArray(generatedApplicationCode));
     console.log('🔍 DEBUG: generatedApplicationCode.length:', generatedApplicationCode ? generatedApplicationCode.length : 'undefined');
+
+
+    // Check if we're in multi-ticket mode
+    if (multiTicketMode) {
+        const selectedTicketIds = getSelectedTickets();
+
+        // If no tickets specifically selected, review ALL tickets
+        const ticketsToReview = selectedTicketIds.length > 0 ? selectedTicketIds :
+                               ticketResults.map(t => t.ticket_id);
+
+        console.log(`🔍 Multi-ticket mode: Reviewing ${ticketsToReview.length} tickets`);
+
+        // Prepare ALL code (both main and unit tests) for selected tickets
+        const allCodeForReview = [];
+
+        ticketsToReview.forEach(ticketId => {
+            const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+            if (ticketIndex !== -1) {
+                // Add main code
+                const mainTextarea = document.getElementById(`mainArea${ticketIndex}`);
+                if (mainTextarea && mainTextarea.value.trim()) {
+                    allCodeForReview.push({
+                        file_name: `${ticketId}_main_implementation.py`,
+                        generated_code: mainTextarea.value,
+                        story_id: `${ticketId}_main`,
+                        story_title: `${ticketResults[ticketIndex].title} - Main Code`,
+                        ticket_index: ticketIndex,
+                        code_type: 'main'
+                    });
+                }
+
+                // Add unit tests
+                const testTextarea = document.getElementById(`testArea${ticketIndex}`);
+                if (testTextarea && testTextarea.value.trim()) {
+                    allCodeForReview.push({
+                        file_name: `${ticketId}_unit_tests.py`,
+                        generated_code: testTextarea.value,
+                        story_id: `${ticketId}_test`,
+                        story_title: `${ticketResults[ticketIndex].title} - Unit Tests`,
+                        ticket_index: ticketIndex,
+                        code_type: 'test'
+                    });
+                }
+            }
+        });
+
+        // Store all code for review
+        generatedApplicationCode = allCodeForReview;
+        console.log(`🔍 Prepared ${allCodeForReview.length} code files for review`);
+
+        // ADD THIS SINGLE LINE - Store on server for backend
+        await fetch('/store_generated_code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ generated_code: allCodeForReview }) });
+    }
 
     // Check for generated application code (using the same variable name as QA workflow)
     if (!generatedApplicationCode || generatedApplicationCode.length === 0) {
@@ -4342,6 +5624,48 @@ async function reviewApplicationCode() {
         console.log('📋 Developer review result:', result);
 
         if (result.success) {
+
+            // Handle multi-ticket individual reports
+            if (multiTicketMode && result.individual_reports && result.individual_reports.length > 0) {
+                result.individual_reports.forEach((report) => {
+                    // Parse the file name to determine ticket and code type
+                    const fileName = report.script_name;
+                    let ticketId, codeType;
+
+                    if (fileName.includes('_main_implementation.py')) {
+                        ticketId = fileName.replace('_main_implementation.py', '');
+                        codeType = 'main';
+                    } else if (fileName.includes('_unit_tests.py')) {
+                        ticketId = fileName.replace('_unit_tests.py', '');
+                        codeType = 'test';
+                    }
+
+                    const ticketIndex = ticketResults.findIndex(t => t.ticket_id === ticketId);
+
+                    if (ticketIndex !== -1) {
+                        const textareaId = codeType === 'main' ? `mainArea${ticketIndex}` : `testArea${ticketIndex}`;
+                        const textarea = document.getElementById(textareaId);
+
+                        if (textarea) {
+                            const reviewReport = `=== CODE REVIEW REPORT ===
+Ticket: ${ticketId} - ${codeType.toUpperCase()} CODE
+File: ${fileName}
+
+${report.review_report}
+
+████████████████████████████████████████████████████████████████████████████████████████████████████████████████
+██ ⚠️  IMPORTANT: CODE REVIEW COMPLETED. ADDRESS ISSUES BEFORE DEPLOYMENT. ⚠️  ██
+██ 🚀 CODE IS READY FOR DEPLOYMENT IF ALL STATIC ANALYSIS CHECKS PASS. 🚀 ██
+████████████████████████████████████████████████████████████████████████████████████████████████████████████████`;
+
+                            textarea.value = reviewReport;
+                            updateTicketCharCount(ticketIndex, codeType);
+                        }
+                    }
+                });
+
+                showToast(`Reviewed both main code and unit tests for selected tickets!`, 'success');
+            }
             // Handle individual reports for application code files
             if (result.individual_reports && result.individual_reports.length > 0) {
                 console.log('📋 Processing individual review reports for application code');
@@ -5764,6 +7088,10 @@ function confirmDeviceSelection() {
     }
 
     console.log(`✅ Device selection confirmed: ${selectedDevice.name}`);
+
+    // PRESERVE the device ID before closing modal
+    window.confirmedDeviceId = selectedDeviceId;
+
     closeDeviceSelectionModal();
 
     // Show confirmation and proceed with execution
@@ -8200,6 +9528,25 @@ async function executeCodeWithSelectedDevice() {
     console.log('🚀 Starting execution with selected device');
 
     try {
+        // Get the selected device ID from the modal (before it gets closed)
+        //const selectedDeviceRadio = document.querySelector('input[name="selectedDevice"]:checked');
+        //const currentSelectedDeviceId = selectedDeviceRadio ? selectedDeviceRadio.value : selectedDeviceId;
+        const currentSelectedDeviceId = window.confirmedDeviceId;
+
+        console.log('🔍 Device ID found:', currentSelectedDeviceId);
+
+        if (!currentSelectedDeviceId) {
+            showToast('No device selected', 'error');
+            return;
+        }
+
+        // Check if we're in multi-ticket mode
+        if (window.multiTicketSelectedIndices && window.multiTicketSelectedIndices.length > 0) {
+            console.log('🎫 Multi-ticket execution mode detected');
+            await executeMultiTicketCode(window.multiTicketSelectedIndices, currentSelectedDeviceId);
+            return;
+        }
+
         // FIXED: Different logic for single vs multiple tests
         let selectedTestIds;
 
@@ -8557,6 +9904,148 @@ ${singleResult.stderr}
             showToast('Code execution failed: ' + error.message, 'error');
         }
     }
+}
+
+// NEW: Multi-ticket execution function
+async function executeMultiTicketCode(selectedIndices, deviceId) {
+    console.log(`🎫 Executing ${selectedIndices.length} tickets on device: ${deviceId}`);
+
+    // Find the device object
+    const selectedDevice = availableDevices.find(d => d.id === deviceId);
+
+    if (!selectedDevice) {
+        showToast('Selected device not found', 'error');
+        console.error('❌ Device not found in availableDevices:', availableDevices);
+        return;
+    }
+
+    console.log('✅ Found device:', selectedDevice.name);
+
+    // Close the device selection modal
+    closeDeviceSelectionModal();
+
+    // Show progress
+    startDeveloperProgress('execute', `Executing ${selectedIndices.length} tickets on ${selectedDevice.name}`, [
+        'Preparing code for execution',
+        'Connecting to remote device',
+        'Running code on device',
+        'Collecting execution results',
+        'Updating ticket results'
+    ]);
+
+    try {
+
+        // Execute each ticket sequentially
+        for (let i = 0; i < selectedIndices.length; i++) {
+            const ticketIndex = selectedIndices[i];
+            const ticket = ticketResults[ticketIndex];
+
+             updateDeveloperProgress((i / selectedIndices.length) * 80,
+                         `Executing ${ticket.ticket_id} (${i + 1}/${selectedIndices.length})`,
+                         Math.min(i + 2, 4)); // Step index for progress steps
+
+            // Get the main code from the textarea
+            const mainTextarea = document.getElementById(`mainArea${ticketIndex}`);
+            if (mainTextarea && mainTextarea.value.trim()) {
+
+                // Prepare code for this ticket
+                const codeToExecute = [{
+                    file_name: `${ticket.ticket_id}_main_implementation.py`,
+                    generated_code: mainTextarea.value.trim(),
+                    story_id: ticket.ticket_id,
+                    story_title: `Execution for ${ticket.ticket_id}`
+                }];
+
+                // Store code for execution using existing function
+                await fetch('/store_generated_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ generated_code: codeToExecute })
+                });
+
+                // Execute using your existing backend endpoint
+                const response = await fetch('/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        selected_device_id: deviceId,
+                        workflow_type: 'developer'
+                    })
+                });
+
+                const result = await response.json();
+
+                // Update this ticket's textarea with results
+                //displayDeveloperExecutionResults(result)
+                console.log('🔍 Frontend DEBUG - Result:', result);
+                updateTicketWithExecutionResults(ticketIndex, result, selectedDevice);
+
+
+                // Small delay between executions
+                await delay(1000);
+            }
+        }
+
+        updateDeveloperProgress(100, `All ${selectedIndices.length} tickets executed`, 4);
+        showToast(`✅ Executed ${selectedIndices.length} tickets on ${selectedDevice.name}`, 'success');
+
+    } catch (error) {
+        console.error('Multi-ticket execution error:', error);
+        showToast(`Execution failed: ${error.message}`, 'error');
+    } finally {
+        // FIXED: Use hideDeveloperProgress instead of hideProgress
+        setTimeout(() => {
+            hideDeveloperProgress();
+        }, 2000);
+        // Clean up
+        window.multiTicketSelectedIndices = null;
+    }
+}
+
+
+// NEW: Update individual ticket textarea with execution results
+function updateTicketWithExecutionResults(ticketIndex, executionResult, device) {
+    console.log('🔍 Frontend DEBUG - executionResult:', executionResult);
+    console.log('🔍 Frontend DEBUG - executionResult.success:', executionResult.success);
+    console.log('🔍 Frontend DEBUG - typeof success:', typeof executionResult.success);
+    const textarea = document.getElementById(`mainArea${ticketIndex}`);
+    if (!textarea) return;
+
+    // CLEAR the textarea first (removes code review results)
+    textarea.value = '';
+
+    const ticket = ticketResults[ticketIndex];
+    const timestamp = new Date().toLocaleString();
+    const executionData = executionResult.execution_results?.[0] || {};
+
+    const resultOutput = `=== EXECUTION RESULTS FOR ${ticket.ticket_id} ===
+Executed: ${timestamp}
+Device: ${device.name} (${device.host})
+Status: ${executionResult.success ? 'SUCCESS ✅' : 'FAILED ❌'}
+
+=== EXECUTION OUTPUT ===
+STDOUT:
+${executionData.stdout || 'No output'}
+
+STDERR:
+${executionData.stderr || 'No errors'}
+
+=== SUMMARY ===
+${executionResult.success ? 
+    '✅ Code executed successfully on remote device' : 
+    '❌ Execution failed - check errors above'}
+
+████████████████████████████████████████████████████████████████████████████████████████████████████████████████
+██ 🚀 ${ticket.ticket_id} EXECUTION COMPLETED - CHECK RESULTS ABOVE 🚀 ██
+████████████████████████████████████████████████████████████████████████████████████████████████████████████████`;
+
+    textarea.value = resultOutput;
+    updateTicketCharCount(ticketIndex, 'main');
+
+    // Update ticket status using your existing function
+    updateTicketStatus(ticketIndex,
+                     executionResult.success ? 'Executed ✅' : 'Failed ❌',
+                     executionResult.success ? '#22c55e' : '#ef4444');
 }
 
 // ===========================================
@@ -10662,6 +12151,19 @@ async function runTests(fileId = null) {
     // Get the unit test content
     let testContent;
     let testFileName;
+
+    // NEW: Check if we're in multi-ticket mode
+    if (multiTicketMode && typeof fileId === 'string' && fileId.startsWith('test_')) {
+        // Extract index from fileId like 'test_0'
+        const index = fileId.split('_')[1];
+        const testTextarea = document.getElementById(`testArea${index}`);
+        if (!testTextarea || !testTextarea.value.trim()) {
+            showToast('No unit test content to execute!', 'warning');
+            return;
+        }
+        testContent = testTextarea.value.trim();
+        testFileName = `ticket_${index}_test.py`;
+    }
 
     if (fileId) {
         // Running specific test file
