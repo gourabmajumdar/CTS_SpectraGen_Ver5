@@ -357,6 +357,7 @@ Please implement the above JIRA ticket requirements as complete, functional code
 
     def build_combined_jira_prompt(self, tickets):
         """Build combined prompt for multiple JIRA tickets"""
+        additional_notes = session.get('user_additional_notes', '')
         if len(tickets) == 1:
             return self.build_jira_prompt(tickets[0])
 
@@ -379,7 +380,7 @@ Acceptance Criteria:
 {ticket['acceptance_criteria']}
 
 Technical Notes:
-{ticket['technical_notes'] if ticket['technical_notes'] else 'No specific technical notes provided'}
+{additional_notes if additional_notes else 'No specific technical notes provided'}
 
 {'=' * 50}
 
@@ -1602,6 +1603,8 @@ def select_jira_tickets():
     try:
         data = request.get_json()
         selected_ticket_ids = data.get('ticket_ids', [])
+        additional_notes = data.get('additional_notes', '')
+        session['user_additional_notes'] = additional_notes
 
         if not selected_ticket_ids:
             return jsonify({'success': False, 'message': 'No tickets selected'})
@@ -1730,6 +1733,10 @@ def generate_jira_prompt():
     global selected_jira_tickets
 
     try:
+        data = request.get_json() or {}
+        additional_notes = data.get('additional_notes', '')  # ADD THIS LINE
+        session['user_additional_notes'] = additional_notes  # ADD THIS LINE
+
         if not selected_jira_tickets:
             return jsonify({'success': False, 'message': 'No JIRA tickets selected'})
 
@@ -4347,11 +4354,17 @@ def execute_code():
         if selected_test_ids and len(scripts_to_execute) != len(generated_scripts_info):
             success_message += f' (selected {len(scripts_to_execute)} out of {len(generated_scripts_info)} total)'
 
-        overall_success = all(result['success'] for result in execution_results)
+
+        if workflow_type == 'developer':
+            overall_success = all(result['success'] for result in execution_results)
+        else:
+            overall_success = True
+
         print(f"[DEBUG] Overall success: {overall_success}")
         print(f"[DEBUG] Final Result: {execution_results}")
+
         return jsonify({
-            'success': True,
+            'success': overall_success,
             'connected_device': {
                 'id': connected_device['id'],
                 'name': connected_device['name'],

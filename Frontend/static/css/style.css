@@ -6593,3 +6593,83 @@ textarea:focus-visible {
     font-size: 12px;
     color: #6b7280;
 }
+
+/* Add this CSS to your style.css file to make multi-ticket editors bigger */
+/* Increase the height of multi-ticket tab containers */
+.ticket-tab-container {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 500px; /* ADD THIS - was not specified before */
+}
+
+/* Make the tab content area taller */
+.ticket-tab-contents {
+    position: relative;
+    min-height: 450px; /* ADD THIS - gives more space for editor */
+}
+
+/* Increase the textarea height specifically for multi-ticket workflow */
+.ticket-tab-content .tab-textarea {
+    flex: 1;
+    padding: 20px;
+    border: none;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    resize: none;
+    outline: none;
+    background: white;
+    color: #374151;
+    line-height: 1.5;
+    min-height: 380px; /* ADD THIS - much bigger than before */
+    height: 380px;     /* ADD THIS - fixed height for consistency */
+}
+
+/* Dark theme for code editors in multi-ticket */
+.ticket-tab-content .tab-textarea.code-editor {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    min-height: 380px; /* ADD THIS - same size for dark theme */
+    height: 380px;     /* ADD THIS */
+}
+
+/* Make the whole ticket area group bigger */
+.ticket-area-group {
+    margin-bottom: 30px;           /* ADD THIS - more space between tickets */
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* ADD THIS - nice shadow */
+}
+
+/* Optional: Make the tab headers a bit bigger too */
+.ticket-tab-header {
+    flex: 1;
+    padding: 15px 20px;    /* INCREASE from 12px to 15px */
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 500;
+    border-bottom: 3px solid transparent;
+    font-size: 0.95rem;    /* ADD THIS - slightly bigger text */
+}
+
+/* Optional: Make toolbars a bit more spacious */
+.ticket-tab-content .tab-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 20px;    /* INCREASE from 12px to 15px */
+    background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* Optional: Make footer slightly bigger */
+.ticket-tab-content .tab-footer {
+    padding: 12px 20px;    /* INCREASE from 8px to 12px */
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+    text-align: right;
+}

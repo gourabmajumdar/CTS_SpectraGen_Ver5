@@ -1298,6 +1298,9 @@ async function proceedWithSelectedTickets() {
     proceedBtn.textContent = 'Processing...';
 
     try {
+        const requirementTextElement = document.getElementById('requirementText');
+        const additionalNotes = requirementTextElement ? requirementTextElement.value.trim() : '';
+
         // Use your existing ticket selection logic
         const selectResponse = await fetch('/select_jira_tickets', {
             method: 'POST',
@@ -1665,7 +1668,7 @@ function createTicketArea(workflowItem, index) {
                         </div>
                         <textarea 
                             id="mainArea${index}" 
-                            class="ticket-textarea"
+                            class="tab-textarea code-editor"
                             placeholder="Main application code for ${workflowItem.ticket_id} will appear here..."
                             oninput="updateTicketCharCount(${index}, 'main')"
                         ></textarea>
@@ -1688,7 +1691,7 @@ function createTicketArea(workflowItem, index) {
                         </div>
                         <textarea 
                             id="testArea${index}" 
-                            class="ticket-textarea"
+                            class="tab-textarea code-editor"
                             placeholder="Unit tests for ${workflowItem.ticket_id} will appear here..."
                             oninput="updateTicketCharCount(${index}, 'test')"
                         ></textarea>
@@ -3711,9 +3714,15 @@ async function ingestDeveloperRequirementsOriginal() {
             updateProgress(25, 'Generating combined AI prompt', 0);
 
             // Generate combined prompt from all tickets
+            const requirementTextElement = document.getElementById('requirementText');
+            const additionalNotes = requirementTextElement ? requirementTextElement.value.trim() : '';
+
             const promptResponse = await fetch('/generate_jira_prompt', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    additional_notes: additionalNotes  // ADD THIS
+                })
             });
 
             const promptResult = await promptResponse.json();
